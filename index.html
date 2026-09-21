@@ -171,9 +171,8 @@ async function loadTesseract(){
  if(tesseractWorkerPromise)return tesseractWorkerPromise;
  tesseractWorkerPromise=(async()=>{
    if(!window.Tesseract) throw new Error("Tesseract.js yüklənmədi");
-   const worker=await Tesseract.createWorker("eng",1,{
+   const worker=await Tesseract.createWorker(["eng","tur","aze"],1,{
      workerPath:"https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/worker.min.js",
-     langPath:"https://tessdata.projectnaptha.com/4.0.0_fast",
      logger:m=>{
        if(m&&m.status&&typeof m.progress==="number"){
          const pct=Math.round(m.progress*100);
@@ -183,29 +182,33 @@ async function loadTesseract(){
      }
    });
    await worker.setParameters({
-     tessedit_pageseg_mode:"11",
-     preserve_interword_spaces:"1"
+     preserve_interword_spaces:"1",
+     user_defined_dpi:"300"
    });
    return worker;
  })();
  return tesseractWorkerPromise;
 }
-async function prepareOCRImage(file){
+async function prepareOCRVariants(file){
  const bmp=await createImageBitmap(file);
- const maxSide=1600;
+ const maxSide=2000;
  const scale=Math.min(1,maxSide/Math.max(bmp.width,bmp.height));
  const w=Math.max(1,Math.round(bmp.width*scale)),h=Math.max(1,Math.round(bmp.height*scale));
- const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
- const ctx=canvas.getContext("2d",{willReadFrequently:true});
- ctx.drawImage(bmp,0,0,w,h);
- const img=ctx.getImageData(0,0,w,h),d=img.data;
- for(let i=0;i<d.length;i+=4){
-   const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-   const c=Math.max(0,Math.min(255,(y-128)*1.35+128));
-   d[i]=d[i+1]=d[i+2]=c;
+ const base=document.createElement("canvas");base.width=w;base.height=h;
+ const ctx=base.getContext("2d",{willReadFrequently:true});ctx.drawImage(bmp,0,0,w,h);
+ const src=ctx.getImageData(0,0,w,h);
+ const gray=ctx.createImageData(w,h);
+ const thr=ctx.createImageData(w,h);
+ for(let i=0;i<src.data.length;i+=4){
+   const y=0.299*src.data[i]+0.587*src.data[i+1]+0.114*src.data[i+2];
+   const g=Math.max(0,Math.min(255,(y-128)*1.55+128));
+   gray.data[i]=gray.data[i+1]=gray.data[i+2]=g;gray.data[i+3]=255;
+   const t=g>155?255:0;
+   thr.data[i]=thr.data[i+1]=thr.data[i+2]=t;thr.data[i+3]=255;
  }
- ctx.putImageData(img,0,0);
- return canvas;
+ const grayCanvas=document.createElement("canvas");grayCanvas.width=w;grayCanvas.height=h;grayCanvas.getContext("2d").putImageData(gray,0,0);
+ const thrCanvas=document.createElement("canvas");thrCanvas.width=w;thrCanvas.height=h;thrCanvas.getContext("2d").putImageData(thr,0,0);
+ return [base,grayCanvas,thrCanvas];
 }
 function cleanOCRText(s){
  return String(s||"").replace(/[|¦]/g,"I").replace(/[\u2010-\u2015]/g,"-")
@@ -220,13 +223,21 @@ function findBestOCRMatch(texts){
  const candidates=[];
  for(const raw of texts){
    const ls=ocrLines(raw); candidates.push(...ls);
-   for(let i=0;i<ls.length-1;i++) candidates.push(ls[i]+" "+ls[i+1]);
+   for(let i=0;i<ls.length-1;i++)candidates.push(ls[i]+" "+ls[i+1]);
  }
  for(const line of candidates){
+   const nl=norm(line);
+   if(nl.length<3)continue;
    for(const r of DATA){
+     const name=norm(r.product),lname=loose(r.product);
      let s=score(r,line);
-     const pt=tokens(norm(r.product)),nt=tokens(norm(line));
-     if(pt.length&&pt.every(t=>nt.some(x=>x===t||x.startsWith(t)||lev(t,x)<=1)))s+=300;
+     if(name.length>=4){
+       if(nl===name||nl.includes(name)||name.includes(nl))s+=500;
+       const pt=tokens(name),nt=tokens(nl);
+       const matched=pt.filter(t=>nt.some(x=>x===t||x.startsWith(t)||lev(t,x)<=1)).length;
+       if(pt.length&&matched===pt.length)s+=450;
+       else if(pt.length>1&&matched>=Math.max(1,pt.length-1))s+=220;
+     }
      if(s>bestScore){bestScore=s;bestRec=r;bestLine=line}
    }
  }
@@ -234,22 +245,27 @@ function findBestOCRMatch(texts){
 }
 async function photoOCR(file){
  const e=document.getElementById("results");
- e.innerHTML='<div class="warn">⏳ AI OCR hazırlanır…<br><small>Şəkil telefonda lokal oxunur. İlk istifadədə OCR mühərriki yüklənir.</small></div>';
+ e.innerHTML='<div class="warn">⏳ AI OCR hazırlanır…<br><small>Etiket lokal olaraq bir neçə üsulla yoxlanılır. İlk istifadədə OCR mühərriki yüklənir.</small></div>';
  try{
    const worker=await loadTesseract();
-   const canvas=await prepareOCRImage(file);
-   const ret=await worker.recognize(canvas);
-   const text=(ret&&ret.data&&ret.data.text)||"";
-   const lines=ocrLines(text);
-   const match=findBestOCRMatch([text,...lines]);
-   if(match.bestRec&&match.bestScore>=430){
+   const variants=await prepareOCRVariants(file);
+   const texts=[];
+   const modes=[11,6,12];
+   for(let i=0;i<variants.length;i++){
+     await worker.setParameters({tessedit_pageseg_mode:String(modes[i])});
+     const ret=await worker.recognize(variants[i]);
+     texts.push((ret&&ret.data&&ret.data.text)||"");
+   }
+   const match=findBestOCRMatch(texts);
+   const combined=cleanOCRText(texts.join("\n"));
+   if(match.bestRec&&match.bestScore>=700){
      document.getElementById("q").value=match.bestRec.product;
      saveHistory(match.bestRec.product); render();
      document.getElementById("results").insertAdjacentHTML("afterbegin",
-       '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b><br><small>Oxunan mətn: '+esc(text.slice(0,220))+'</small></div>');
+       '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b><br><small>OCR: '+esc(match.bestLine||"")+'</small></div>');
    }else{
      document.getElementById("q").value="";
-     e.innerHTML='<div class="warn">🟠 Yazı oxundu, amma AQTA bazasında kifayət qədər güvənli uyğunluq tapılmadı.<br><small>Oxunan mətn: '+esc(text.slice(0,600)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını kadra mümkün qədər böyük salın.</div>';
+     e.innerHTML='<div class="warn">🟠 Etiket oxundu, amma məhsulu dəqiq müəyyən etmək mümkün olmadı.<br><small>OCR nəticəsi: '+esc(combined.slice(0,900)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını kadra mümkün qədər böyük və düz salın.</div>';
    }
  }catch(x){
    e.innerHTML='<div class="warn">🟠 Lokal AI OCR işləmədi.<br><small>'+esc(x?.message||"Naməlum xəta")+'</small></div>';
