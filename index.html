@@ -62,6 +62,7 @@ select{border:1px solid var(--line);background:white;border-radius:10px;padding:
   <div class="footer">Mənbə: AQTA-nın 01.09.2026 tarixli pestisid və aqrokimyəvi maddələr reyestrlərindən hazırlanmış texniki baza. Qablaşdırmadakı EXP ayrıca yoxlanmalıdır; reyestrdəki qeydiyyatın bitmə tarixi ilə eyni şey deyil.</div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
 <script>
 let DATA=[];
 const CYR={
@@ -165,73 +166,72 @@ function renderFavorites(){const e=document.getElementById("favoritesList"),rows
 function renderStats(){const p=DATA.filter(r=>r.category==="pestisid").length,a=DATA.filter(r=>r.category==="aqrokimyəvi").length,ac=DATA.filter(r=>r.status==="Aktiv").length,ex=DATA.filter(r=>r.status==="Müddəti bitib").length;document.getElementById("statsGrid").innerHTML='<div class="stat"><b>'+DATA.length+'</b><span>Ümumi</span></div><div class="stat"><b>'+p+'</b><span>Pestisid</span></div><div class="stat"><b>'+a+'</b><span>Aqrokimyəvi</span></div><div class="stat"><b>'+ac+'</b><span>Aktiv</span></div><div class="stat"><b>'+ex+'</b><span>Müddəti bitib</span></div>'}
 function checkExp(i){const e=i.parentElement.querySelector(".exp-result"),v=i.value;if(!v){e.innerHTML="";return}const d=Math.ceil((new Date(v+"T23:59:59")-new Date())/86400000);e.className="exp-result "+(d<0?"exp-bad":d<=30?"exp-warn":"exp-ok");e.textContent=d<0?"🔴 Qablaşdırmanın EXP müddəti bitib — "+Math.abs(d)+" gün əvvəl":d<=30?"🟠 EXP müddətinin bitməsinə "+d+" gün qalıb":"🟢 Qablaşdırmanın EXP müddəti keçməyib — "+d+" gün qalıb"}
 function togglePanel(id){["historyPanel","favoritesPanel","statsPanel"].forEach(x=>{if(x!==id)document.getElementById(x).classList.remove("open")});document.getElementById(id).classList.toggle("open");if(id==="historyPanel")renderHistory();if(id==="favoritesPanel")renderFavorites();if(id==="statsPanel")renderStats()}
-let paddleOCRPromise=null;
-async function loadPaddleOCR(){
- if(paddleOCRPromise)return paddleOCRPromise;
- paddleOCRPromise=(async()=>{
-   const mod=await import("https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm");
-   const ocr=await mod.PaddleOCR.create({
-     lang:"en",
-     ocrVersion:"PP-OCRv5",
-     worker:false,
-     ortOptions:{
-       backend:"wasm",
-       wasmPaths:"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
-       numThreads:1,
-       simd:true
+let tesseractWorkerPromise=null;
+async function loadTesseract(){
+ if(tesseractWorkerPromise)return tesseractWorkerPromise;
+ tesseractWorkerPromise=(async()=>{
+   if(!window.Tesseract) throw new Error("Tesseract.js yüklənmədi");
+   const worker=await Tesseract.createWorker("eng",1,{
+     workerPath:"https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/worker.min.js",
+     corePath:"https://cdn.jsdelivr.net/npm/tesseract.js-core@6/tesseract-core-simd.wasm.js",
+     langPath:"https://tessdata.projectnaptha.com/4.0.0",
+     logger:m=>{
+       if(m&&m.status&&typeof m.progress==="number"){
+         const pct=Math.round(m.progress*100);
+         const box=document.getElementById("results");
+         box.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>'+esc(m.status)+' · '+pct+'%</small></div>';
+       }
      }
    });
-   return ocr;
+   await worker.setParameters({
+     tessedit_pageseg_mode:"11",
+     preserve_interword_spaces:"1"
+   });
+   return worker;
  })();
- return paddleOCRPromise;
+ return tesseractWorkerPromise;
 }
-function cleanOCRText(s){
- return String(s||"").replace(/[|¦]/g,"I").replace(/[\u2010-\u2015]/g,"-")
-   .replace(/[^A-Za-zƏəÖöÜüĞğÇçŞşİıƏə0-9%./()'&+\-\n ]/g," ")
-   .replace(/[ \t]+/g," ").replace(/\n{2,}/g,"\n").trim();
-}
-function ocrLines(raw){
- return cleanOCRText(raw).split(/\n+/).map(x=>x.trim()).filter(x=>x.length>=2);
-}
-function findBestOCRMatch(texts){
- let bestRec=null,bestScore=0,bestLine="";
- const candidates=[];
- for(const raw of texts){
-   const ls=ocrLines(raw); candidates.push(...ls);
-   for(let i=0;i<ls.length-1;i++)candidates.push(ls[i]+" "+ls[i+1]);
+async function prepareOCRImage(file){
+ const bmp=await createImageBitmap(file);
+ const maxSide=1600;
+ const scale=Math.min(1,maxSide/Math.max(bmp.width,bmp.height));
+ const w=Math.max(1,Math.round(bmp.width*scale)),h=Math.max(1,Math.round(bmp.height*scale));
+ const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+ const ctx=canvas.getContext("2d",{willReadFrequently:true});
+ ctx.drawImage(bmp,0,0,w,h);
+ const img=ctx.getImageData(0,0,w,h),d=img.data;
+ for(let i=0;i<d.length;i+=4){
+   const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+   const c=Math.max(0,Math.min(255,(y-128)*1.35+128));
+   d[i]=d[i+1]=d[i+2]=c;
  }
- for(const line of candidates){
-   for(const r of DATA){
-     let s=score(r,line);
-     const pt=tokens(norm(r.product)),nt=tokens(norm(line));
-     if(pt.length&&pt.every(t=>nt.some(x=>x===t||x.startsWith(t)||lev(t,x)<=1)))s+=300;
-     if(s>bestScore){bestScore=s;bestRec=r;bestLine=line}
-   }
- }
- return {bestRec,bestScore,bestLine};
+ ctx.putImageData(img,0,0);
+ return canvas;
 }
 async function photoOCR(file){
  const e=document.getElementById("results");
- e.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>Şəkil telefonda lokal analiz olunur. İlk istifadədə OCR modeli yüklənir. iPhone üçün uyğun rejim aktivdir.</small></div>';
+ e.innerHTML='<div class="warn">⏳ AI OCR hazırlanır…<br><small>Şəkil telefonda lokal oxunur. İlk istifadədə OCR mühərriki yüklənir.</small></div>';
  try{
-   const ocr=await loadPaddleOCR();
-   const [result]=await ocr.predict(file,{textDetLimitSideLen:1536,textRecScoreThresh:0.35});
-   const items=(result&&result.items)||[];
-   const texts=items.map(x=>x.text||"").filter(Boolean);
-   const match=findBestOCRMatch(texts);
+   const worker=await loadTesseract();
+   const canvas=await prepareOCRImage(file);
+   const ret=await worker.recognize(canvas);
+   const text=(ret&&ret.data&&ret.data.text)||"";
+   const lines=ocrLines(text);
+   const match=findBestOCRMatch([text,...lines]);
    if(match.bestRec&&match.bestScore>=430){
      document.getElementById("q").value=match.bestRec.product;
      saveHistory(match.bestRec.product); render();
      document.getElementById("results").insertAdjacentHTML("afterbegin",
-       '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b></div>');
+       '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b><br><small>Oxunan mətn: '+esc(text.slice(0,220))+'</small></div>');
    }else{
      document.getElementById("q").value="";
-     e.innerHTML='<div class="warn">🟠 Yazı oxundu, amma AQTA bazasında kifayət qədər güvənli uyğunluq tapılmadı.<br><small>Oxunan mətn: '+esc(texts.join(" · ").slice(0,600)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını kadra mümkün qədər böyük salın.</div>';
+     e.innerHTML='<div class="warn">🟠 Yazı oxundu, amma AQTA bazasında kifayət qədər güvənli uyğunluq tapılmadı.<br><small>Oxunan mətn: '+esc(text.slice(0,600)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını kadra mümkün qədər böyük salın.</div>';
    }
  }catch(x){
    e.innerHTML='<div class="warn">🟠 Lokal AI OCR işləmədi.<br><small>'+esc(x?.message||"Naməlum xəta")+'</small></div>';
  }
-}async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
+}
+async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
 document.getElementById("search").onclick=()=>{saveHistory(document.getElementById("q").value.trim());render()};document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"){saveHistory(document.getElementById("q").value.trim());render()}});document.getElementById("photoBtn").onclick=()=>document.getElementById("photoInput").click();document.getElementById("photoInput").onchange=e=>{if(e.target.files[0])photoOCR(e.target.files[0])};document.getElementById("barcodeBtn").onclick=scanBarcode;document.getElementById("historyBtn").onclick=()=>togglePanel("historyPanel");document.getElementById("favoritesBtn").onclick=()=>togglePanel("favoritesPanel");document.getElementById("statsBtn").onclick=()=>togglePanel("statsPanel");renderHistory();
 fetch("./data.json?v=20260921").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(d=>{if(!Array.isArray(d))throw new Error("data.json massiv deyil");DATA=d;render();renderStats();renderFavorites()}).catch(x=>document.getElementById("results").innerHTML='<div class="warn">🟠 Baza yüklənmədi: '+esc(x.message)+'</div>');
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
