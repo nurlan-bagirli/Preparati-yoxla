@@ -1,10 +1,10 @@
-const CACHE="py-2026-09-21-v5";
+const CACHE="py-network-first-20260921-v6";
 const CORE=["./","./index.html","./manifest.webmanifest","./data.json"];
 
 self.addEventListener("install",e=>{
   e.waitUntil(
     caches.open(CACHE)
-      .then(c=>c.addAll(CORE))
+      .then(c=>c.addAll(CORE).catch(()=>{}))
       .then(()=>self.skipWaiting())
   );
 });
@@ -21,33 +21,15 @@ self.addEventListener("fetch",e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=="GET" || u.origin!==self.location.origin) return;
 
-  // Always check the network first for HTML/JS app files so new deployments
-  // are not hidden behind an old service-worker cache.
-  const isAppFile =
-    u.pathname.endsWith("/") ||
-    u.pathname.endsWith("/index.html") ||
-    u.pathname.endsWith("/sw.js") ||
-    u.pathname.endsWith(".js") ||
-    u.pathname.endsWith(".webmanifest");
-
-  if(isAppFile){
-    e.respondWith(
-      fetch(e.request)
-        .then(r=>{
-          const copy=r.clone();
-          caches.open(CACHE).then(c=>c.put(e.request,copy));
-          return r;
-        })
-        .catch(()=>caches.match(e.request).then(c=>c||caches.match("./index.html")))
-    );
-    return;
-  }
-
+  // Network-first: every online page/data request checks the newest deployed file.
+  // Cache is only the offline fallback.
   e.respondWith(
-    caches.match(e.request).then(cached=>cached||fetch(e.request).then(r=>{
-      const copy=r.clone();
-      caches.open(CACHE).then(c=>c.put(e.request,copy));
-      return r;
-    }))
+    fetch(e.request,{cache:"no-store"})
+      .then(r=>{
+        const copy=r.clone();
+        caches.open(CACHE).then(c=>c.put(e.request,copy));
+        return r;
+      })
+      .catch(()=>caches.match(e.request))
   );
 });
