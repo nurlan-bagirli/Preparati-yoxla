@@ -1,1 +1,141 @@
-<!doctype html><html lang="az"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preparatı Yoxla</title><style>body{font-family:system-ui;margin:0;background:#f4f7f5;color:#17211d}header{background:#086447;color:#fff;padding:28px 16px}main{max-width:900px;margin:auto;padding:20px 16px}.search{display:flex;gap:8px;margin-top:18px}.search input{flex:1;padding:14px;border:0;border-radius:10px;font-size:16px}.search button{padding:14px;border:0;border-radius:10px}.card{background:white;border:1px solid #dce5e0;border-radius:14px;padding:16px;margin:12px 0}.ok{color:#087443;font-weight:700}.warn{background:#fff0dc;padding:14px;border-radius:12px}</style><header><main><h1>🌿 Preparatı Yoxla</h1><div>01.09.2026 AQTA reyestri</div><div class="search"><input id=q placeholder="Preparat adı, qeydiyyat №, təsiredici maddə..."><button onclick=go>🔎 Yoxla</button></div></main></header><main><div id=out>Yüklənir…</div></main><script>let d=[];fetch('data.json').then(r=>r.json()).then(x=>{d=x;out.innerHTML='<p><b>'+d.length+'</b> qeyd bazaya yükləndi. Məsələn <b>Sunstar</b> yazın.</p>'}).catch(()=>out.innerHTML='<div class=warn>data.json hələ yerləşdirilməyib.</div>');function go(){let q=document.getElementById('q').value.toLowerCase().trim();let a=d.filter(x=>(x.product+' '+x.active+' '+x.manufacturer+' '+x.regNo).toLowerCase().includes(q)).slice(0,20);out.innerHTML=a.length?a.map(x=>`<div class=card><h2>${x.product}</h2><div>${x.active||'—'}</div><p>Qeydiyyat №: <b>${x.regNo||'—'}</b><br>Bitmə: <b>${x.regExpiry||'—'}</b></p><div class=ok>${x.status||''}</div><small>AQTA PDF səhifəsi: ${x.pdfPage||'—'}</small></div>`).join(''):'<div class=warn>🟠 Dəqiq uyğunluq tapılmadı.</div>'}</script></html>
+<!doctype html>
+<html lang="az">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b6b4f">
+<title>Preparatı Yoxla</title>
+<style>
+:root{--green:#0b6b4f;--green2:#0e8a65;--bg:#f4f7f5;--card:#fff;--text:#17211d;--muted:#66736d;--line:#dce5e0;--orange:#c66b00;--red:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text)}
+header{background:linear-gradient(145deg,#07583f,#0e8a65);color:#fff;padding:24px 16px 30px}
+.wrap{max-width:980px;margin:auto}
+.brand{font-weight:800;font-size:24px;letter-spacing:-.3px}.sub{opacity:.86;margin-top:5px;font-size:13px}
+.searchbox{margin-top:20px;background:#fff;border-radius:16px;padding:10px;display:flex;gap:8px;box-shadow:0 8px 25px #063c2a33}
+.searchbox input{min-width:0;flex:1;border:0;outline:0;font-size:17px;padding:11px 10px;color:var(--text)}
+button{border:0;border-radius:12px;padding:11px 15px;font-weight:700;cursor:pointer}
+.searchbtn{background:var(--green);color:white}.clear{background:#eef2ef;color:#405048}
+main{padding:18px 16px 50px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+select{border:1px solid var(--line);background:white;border-radius:10px;padding:9px 11px;color:var(--text)}
+.count{color:var(--muted);font-size:13px;margin-left:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:17px;margin:10px 0;box-shadow:0 2px 7px #12241b0b}
+.title{font-size:18px;font-weight:800}.meta{color:var(--muted);font-size:13px;margin-top:5px}
+.badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;margin:10px 0}
+.active{background:#dff5e9;color:#09623f}.expired{background:#fde7e5;color:var(--red)}.unknown{background:#fff0dc;color:var(--orange)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:8px}
+.field{background:#f7f9f8;border-radius:10px;padding:9px}.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}.value{font-size:14px;margin-top:3px;word-break:break-word}
+.details{display:none;margin-top:13px;border-top:1px solid var(--line);padding-top:12px}.details.open{display:block}
+.source{font-size:12px;color:var(--muted);margin-top:12px}.source b{color:var(--text)}
+.warn{padding:16px;border-radius:14px;background:#fff0dc;border:1px solid #f3cf9d;color:#7b4a09;margin:10px 0}
+.empty{text-align:center;padding:45px 20px;color:var(--muted)}
+.help{font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 14px}
+.expbox{margin-top:12px;padding:12px;border:1px dashed #c8d5cf;border-radius:12px;background:#fbfcfb}
+.expbox input{width:100%;margin-top:7px;border:1px solid var(--line);border-radius:9px;padding:10px;font-size:15px}
+.footer{font-size:12px;color:var(--muted);padding:20px 0}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.count{margin-left:0;width:100%}.searchbox{padding:7px}.searchbox input{font-size:16px}.searchbtn{padding:11px 12px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand">🌿 Preparatı Yoxla</div>
+  <div class="sub">Pestisid + aqrokimyəvi maddələr • 01.09.2026 reyestri</div>
+  <div class="searchbox">
+    <input id="q" autocomplete="off" placeholder="Preparat adı, təsiredici maddə, istehsalçı, qeydiyyat №…">
+    <button class="clear" id="clear">Sil</button>
+    <button class="searchbtn" id="search">🔎 Yoxla</button>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <div class="toolbar">
+    <select id="cat"><option value="">Hamısı</option><option value="pestisid">Pestisid</option><option value="aqrokimyəvi">Aqrokimyəvi</option></select>
+    <select id="status"><option value="">Bütün statuslar</option><option value="Aktiv">🟢 Aktiv</option><option value="Müddəti bitib">🔴 Müddəti bitib</option></select>
+    <span class="count" id="count"></span>
+  </div>
+  <p class="help">Axtarış adın dəqiq eyni yazılmasını tələb etmir. Məsələn <b>Sunstar</b>, <b>Bioabamectin</b>, qeydiyyat nömrəsi və ya təsiredici maddə ilə axtara bilərsiniz.</p>
+  <div id="results"></div>
+  <div class="footer">Mənbə: AQTA-nın 01.09.2026 tarixli pestisid və aqrokimyəvi maddələr reyestrlərindən hazırlanmış texniki baza. Qablaşdırmadakı EXP ayrıca yoxlanmalıdır; reyestrdəki qeydiyyatın bitmə tarixi ilə eyni şey deyil.</div>
+</main>
+
+<script>
+let DATA=[];
+const norm=s=>(s||"").toString().toLocaleLowerCase("az-AZ").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+ .replace(/ə/g,"e").replace(/ı/g,"i").replace(/ö/g,"o").replace(/ü/g,"u").replace(/ş/g,"s").replace(/ç/g,"c").replace(/ğ/g,"g")
+ .replace(/[^a-z0-9]+/g," ").trim();
+
+function lev(a,b){
+ if(a===b)return 0;if(!a)return b.length;if(!b)return a.length;
+ let prev=Array(b.length+1).fill(0).map((_,i)=>i);
+ for(let i=1;i<=a.length;i++){let cur=[i];
+  for(let j=1;j<=b.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+  prev=cur;
+ }return prev[b.length];
+}
+function score(rec,q){
+ const nq=norm(q), name=norm(rec.product), search=norm(rec.searchText);
+ if(!nq)return 0;
+ if(name===nq)return 1000;
+ if(name.startsWith(nq))return 900;
+ if(name.includes(nq))return 800;
+ if(search.includes(nq))return 650;
+ let best=0;
+ for(const t of nq.split(" ")){if(t.length<2)continue;
+   if(name.includes(t))best=Math.max(best,180+t.length);
+   else {const nt=lev(t,name.slice(0,Math.max(t.length+3,8))); if(nt<=2)best=Math.max(best,100);}
+ }
+ return best;
+}
+function fmt(s){return s||"—"}
+function badge(rec){if(rec.status==="Aktiv")return '<span class="badge active">🟢 Dövlət qeydiyyatı aktivdir</span>';
+ if(rec.status==="Müddəti bitib")return '<span class="badge expired">🔴 Qeydiyyat müddəti bitib</span>';
+ return '<span class="badge unknown">🟠 Tarix müəyyən edilmədi</span>'}
+function card(rec){
+ const id="d"+rec.id;
+ return `<article class="card">
+  <div class="title">${esc(rec.product)}</div>
+  <div class="meta">${esc(rec.category)}${rec.subtype?" • "+esc(rec.subtype):""}${rec.manufacturer?" • "+esc(rec.manufacturer):""}</div>
+  ${badge(rec)}
+  <div class="grid">
+    <div class="field"><div class="label">Qeydiyyat №</div><div class="value">${esc(fmt(rec.regNo))}</div></div>
+    <div class="field"><div class="label">Qeydiyyatın bitmə tarixi</div><div class="value">${esc(fmt(rec.regExpiry))}</div></div>
+    <div class="field"><div class="label">Təsiredici maddə</div><div class="value">${esc(fmt(rec.active))}${rec.amount?" • "+esc(rec.amount):""}</div></div>
+    <div class="field"><div class="label">İstehsalçı ölkəsi</div><div class="value">${esc(fmt(rec.manufacturerCountry))}</div></div>
+  </div>
+  <div class="expbox"><b>📦 Qablaşdırmanın EXP tarixi</b>
+    <input type="date" aria-label="Qablaşdırmanın EXP tarixi">
+    <div class="meta">Bu tarix məhsulun qablaşdırmasından oxunur və dövlət qeydiyyatı tarixindən ayrıca qiymətləndirilir.</div>
+  </div>
+  <button class="clear" style="margin-top:10px" onclick="document.getElementById('${id}').classList.toggle('open')">Ətraflı məlumat</button>
+  <div class="details" id="${id}">
+    <div class="grid">
+      <div class="field"><div class="label">Qeydiyyat tarixi</div><div class="value">${esc(fmt(rec.regDate))}</div></div>
+      <div class="field"><div class="label">Mənşə ölkəsi</div><div class="value">${esc(fmt(rec.originCountry))}</div></div>
+      <div class="field"><div class="label">Tətbiq norması</div><div class="value">${esc(fmt(rec.applicationRate))}</div></div>
+      <div class="field"><div class="label">Bitki</div><div class="value">${esc(fmt(rec.crop))}</div></div>
+      <div class="field"><div class="label">Tətbiq üsulu</div><div class="value">${esc(fmt(rec.method))}</div></div>
+      <div class="field"><div class="label">Gözləmə müddəti / işləmə sayı</div><div class="value">${esc(fmt(rec.waiting))}</div></div>
+    </div>
+    <div class="source">📄 AQTA reyestri • PDF səhifəsi: <b>${esc(fmt(rec.pdfPage))}</b> • Reyestr sətri: <b>${esc(fmt(rec.registryNo))}</b></div>
+  </div>
+ </article>`
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function render(){
+ const q=document.getElementById("q").value.trim(), cat=document.getElementById("cat").value, st=document.getElementById("status").value;
+ let arr=DATA.filter(r=>(!cat||r.category===cat)&&(!st||r.status===st));
+ if(q)arr=arr.map(r=>({r,s:score(r,q)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.r);
+ else arr=arr.slice(0,30);
+ document.getElementById("count").textContent=q?`${arr.length} uyğun nəticə`:`İlk ${arr.length} qeyd göstərilir`;
+ const el=document.getElementById("results");
+ if(!arr.length){el.innerHTML='<div class="warn">🟠 <b>Dəqiq uyğunluq tapılmadı.</b><br>Adı, təsiredici maddəni, istehsalçını və ya qeydiyyat nömrəsini başqa formada yoxlayın.</div>';return}
+ el.innerHTML=arr.map(card).join("");
+}
+fetch("data.json").then(r=>r.json()).then(d=>{DATA=d;render()}).catch(()=>document.getElementById("results").innerHTML='<div class="warn">Baza faylı yüklənmədi. index.html ilə data.json eyni qovluqda olmalıdır.</div>');
+document.getElementById("search").onclick=render;
+document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};
+document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;
+document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")render()});
+</script>
+</body>
+</html>
