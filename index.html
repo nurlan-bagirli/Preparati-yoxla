@@ -64,7 +64,7 @@ const CYR={
  "ә":"e","ө":"o","ү":"u","ғ":"g","қ":"q","ң":"n","һ":"h","ҷ":"j","ҹ":"c","і":"i","ј":"j","ı":"i","Ə":"e","Ө":"o","Ü":"u","Ğ":"g","Ç":"c","Ş":"s","Қ":"q","Ң":"n","Һ":"h","Ҷ":"j"
 };
 function translitCyr(s){return String(s??"").split("").map(ch=>CYR[ch.toLowerCase()]??ch).join("")}
-const norm=s=>translitCyr(s).toString().toLocaleLowerCase("az-AZ").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"")
+const norm=s=>translitCyr(s).toString().toLocaleLowerCase("az-AZ").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
  .replace(/ə/g,"e").replace(/ı/g,"i").replace(/ö/g,"o").replace(/ü/g,"u").replace(/ş/g,"s").replace(/ç/g,"c").replace(/ğ/g,"g")
  .replace(/[^a-z0-9]+/g," ").trim();
 const loose=s=>norm(s).replace(/l/g,"i");
@@ -149,7 +149,10 @@ function render(){
  if(!arr.length){el.innerHTML='<div class="warn">🟠 <b>Dəqiq uyğunluq tapılmadı.</b><br>Adı, təsiredici maddəni, istehsalçını və ya qeydiyyat nömrəsini başqa formada yoxlayın.</div>';return}
  el.innerHTML=arr.map(card).join("");
 }
-fetch("data.json").then(r=>r.json()).then(d=>{DATA=d;render()}).catch(()=>document.getElementById("results").innerHTML='<div class="warn">Baza faylı yüklənmədi. index.html ilə data.json eyni qovluqda olmalıdır.</div>');
+fetch("https://raw.githubusercontent.com/nurlan-bagirli/Preparati-yoxla/main/data.json?v=20260921")
+  .then(r=>{if(!r.ok) throw new Error("HTTP "+r.status); return r.json()})
+  .then(d=>{if(!Array.isArray(d)) throw new Error("data.json massiv deyil"); DATA=d; render()})
+  .catch(err=>document.getElementById("results").innerHTML='<div class="warn">🟠 Baza yüklənmədi: '+esc(err.message)+'<br><small>data.json GitHub-dan birbaşa yoxlanılır.</small></div>');
 document.getElementById("search").onclick=render;
 document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};
 document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;
