@@ -167,21 +167,21 @@ function checkExp(i){const e=i.parentElement.querySelector(".exp-result"),v=i.va
 function togglePanel(id){["historyPanel","favoritesPanel","statsPanel"].forEach(x=>{if(x!==id)document.getElementById(x).classList.remove("open")});document.getElementById(id).classList.toggle("open");if(id==="historyPanel")renderHistory();if(id==="favoritesPanel")renderFavorites();if(id==="statsPanel")renderStats()}
 let paddleOCRPromise=null;
 async function loadPaddleOCR(){
- if(window.PaddleOCRReady)return window.PaddleOCRReady;
  if(paddleOCRPromise)return paddleOCRPromise;
  paddleOCRPromise=(async()=>{
-   if(!window.ort){
-     await new Promise((ok,no)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js";s.onload=ok;s.onerror=no;document.head.appendChild(s)});
-   }
-   if(!window.cv){
-     await new Promise((ok,no)=>{const s=document.createElement("script");s.async=true;s.src="https://docs.opencv.org/4.8.0/opencv.js";s.onload=()=>ok();s.onerror=no;document.head.appendChild(s)});
-   }
-   const mod=await import("https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js");
-   const assets="https://cdn.jsdelivr.net/npm/paddleocr-browser@latest/dist/";
-   const dic=await (await fetch(assets+"ppocr_keys_v1.txt")).text();
-   await mod.init({detPath:assets+"ppocr_det.onnx",recPath:assets+"ppocr_rec.onnx",dic,ort, node:false,cv});
-   window.PaddleOCRReady=mod;
-   return mod;
+   const mod=await import("https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm");
+   const ocr=await mod.PaddleOCR.create({
+     lang:"en",
+     ocrVersion:"PP-OCRv5",
+     worker:true,
+     ortOptions:{
+       backend:"wasm",
+       wasmPaths:"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
+       numThreads:2,
+       simd:true
+     }
+   });
+   return ocr;
  })();
  return paddleOCRPromise;
 }
@@ -212,10 +212,10 @@ function findBestOCRMatch(texts){
 }
 async function photoOCR(file){
  const e=document.getElementById("results");
- e.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>Şəkil telefonda lokal olaraq analiz olunur. İlk istifadədə OCR mühərriki yüklənir.</small></div>';
+ e.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>Şəkil telefonda lokal analiz olunur. İlk istifadədə OCR modeli yüklənir.</small></div>';
  try{
-   const paddle=await loadPaddleOCR();
-   const result=await paddle.ocr(file);
+   const ocr=await loadPaddleOCR();
+   const [result]=await ocr.predict(file,{textDetLimitSideLen:1536,textRecScoreThresh:0.35});
    const items=(result&&result.items)||[];
    const texts=items.map(x=>x.text||"").filter(Boolean);
    const match=findBestOCRMatch(texts);
@@ -226,10 +226,10 @@ async function photoOCR(file){
        '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b></div>');
    }else{
      document.getElementById("q").value="";
-     e.innerHTML='<div class="warn">🟠 Yazı oxundu, amma AQTA bazasında kifayət qədər güvənli uyğunluq tapılmadı.<br><small>Oxunan mətn: '+esc(texts.join(" · ").slice(0,600)||"mətn tapılmadı")+'</small><br><br>💡 Etiketdə məhsul adını kadra mümkün qədər böyük salın.</div>';
+     e.innerHTML='<div class="warn">🟠 Yazı oxundu, amma AQTA bazasında kifayət qədər güvənli uyğunluq tapılmadı.<br><small>Oxunan mətn: '+esc(texts.join(" · ").slice(0,600)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını kadra mümkün qədər böyük salın.</div>';
    }
  }catch(x){
-   e.innerHTML='<div class="warn">🟠 Lokal AI OCR yüklənmədi və ya şəkil oxunmadı.<br><small>'+esc(x?.message||"Naməlum xəta")+'</small></div>';
+   e.innerHTML='<div class="warn">🟠 Lokal AI OCR işləmədi.<br><small>'+esc(x?.message||"Naməlum xəta")+'</small></div>';
  }
 }async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
 document.getElementById("search").onclick=()=>{saveHistory(document.getElementById("q").value.trim());render()};document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"){saveHistory(document.getElementById("q").value.trim());render()}});document.getElementById("photoBtn").onclick=()=>document.getElementById("photoInput").click();document.getElementById("photoInput").onchange=e=>{if(e.target.files[0])photoOCR(e.target.files[0])};document.getElementById("barcodeBtn").onclick=scanBarcode;document.getElementById("historyBtn").onclick=()=>togglePanel("historyPanel");document.getElementById("favoritesBtn").onclick=()=>togglePanel("favoritesPanel");document.getElementById("statsBtn").onclick=()=>togglePanel("statsPanel");renderHistory();
