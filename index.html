@@ -165,7 +165,110 @@ function renderFavorites(){const e=document.getElementById("favoritesList"),rows
 function renderStats(){const p=DATA.filter(r=>r.category==="pestisid").length,a=DATA.filter(r=>r.category==="aqrokimyəvi").length,ac=DATA.filter(r=>r.status==="Aktiv").length,ex=DATA.filter(r=>r.status==="Müddəti bitib").length;document.getElementById("statsGrid").innerHTML='<div class="stat"><b>'+DATA.length+'</b><span>Ümumi</span></div><div class="stat"><b>'+p+'</b><span>Pestisid</span></div><div class="stat"><b>'+a+'</b><span>Aqrokimyəvi</span></div><div class="stat"><b>'+ac+'</b><span>Aktiv</span></div><div class="stat"><b>'+ex+'</b><span>Müddəti bitib</span></div>'}
 function checkExp(i){const e=i.parentElement.querySelector(".exp-result"),v=i.value;if(!v){e.innerHTML="";return}const d=Math.ceil((new Date(v+"T23:59:59")-new Date())/86400000);e.className="exp-result "+(d<0?"exp-bad":d<=30?"exp-warn":"exp-ok");e.textContent=d<0?"🔴 Qablaşdırmanın EXP müddəti bitib — "+Math.abs(d)+" gün əvvəl":d<=30?"🟠 EXP müddətinin bitməsinə "+d+" gün qalıb":"🟢 Qablaşdırmanın EXP müddəti keçməyib — "+d+" gün qalıb"}
 function togglePanel(id){["historyPanel","favoritesPanel","statsPanel"].forEach(x=>{if(x!==id)document.getElementById(x).classList.remove("open")});document.getElementById(id).classList.toggle("open");if(id==="historyPanel")renderHistory();if(id==="favoritesPanel")renderFavorites();if(id==="statsPanel")renderStats()}
-async function photoOCR(file){const e=document.getElementById("results");e.innerHTML='<div class="warn">⏳ Etiket oxunur…</div>';try{if(!window.Tesseract)await new Promise((ok,no)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";s.onload=ok;s.onerror=no;document.head.appendChild(s)});const out=await Tesseract.recognize(file,"eng");const raw=out.data.text.trim();const lines=raw.split(/\\n+/).map(x=>x.replace(/[^A-Za-zƏəÖöÜüĞğÇçŞşİı0-9%./-]/g," ").replace(/\\s+/g," ").trim()).filter(x=>x.length>=4);let best="",bestScore=0;for(const line of lines.slice(0,15)){let s=0;for(const r of DATA)s=Math.max(s,score(r,line));if(s>bestScore){bestScore=s;best=line}}if(bestScore>0){document.getElementById("q").value=best;saveHistory(best);render()}else{document.getElementById("q").value=raw.slice(0,100);e.innerHTML='<div class="warn">🟠 Mətn oxundu, amma bazada uyğun preparat tapılmadı.<br><small>Oxunan mətn: '+esc(raw.slice(0,250))+'</small></div>'}}catch(x){e.innerHTML='<div class="warn">🟠 OCR yüklənmədi və ya şəkil oxunmadı.</div>'}}async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
+async function loadTesseract(){
+ if(window.Tesseract)return;
+ await new Promise((ok,no)=>{
+   const s=document.createElement("script");
+   s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+   s.onload=ok;s.onerror=no;document.head.appendChild(s);
+ });
+}
+function makeOCRCanvases(file){
+ return new Promise((resolve,reject)=>{
+   const img=new Image();
+   img.onload=()=>{
+     const max=2200;
+     const scale=Math.min(2.2,Math.max(1, max/Math.max(img.naturalWidth,img.naturalHeight)));
+     const w=Math.max(900,Math.round(img.naturalWidth*scale)),h=Math.max(900,Math.round(img.naturalHeight*scale));
+     const c=document.createElement("canvas");c.width=Math.min(w,2600);c.height=Math.min(h,2600);
+     const ctx=c.getContext("2d",{willReadFrequently:true});
+     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+     ctx.drawImage(img,0,0,c.width,c.height);
+     const base=c;
+     const g=document.createElement("canvas");g.width=c.width;g.height=c.height;
+     const gx=g.getContext("2d",{willReadFrequently:true});
+     gx.filter="grayscale(1) contrast(1.45) brightness(1.04)";
+     gx.drawImage(c,0,0);
+     const t=document.createElement("canvas");t.width=c.width;t.height=c.height;
+     const tx=t.getContext("2d",{willReadFrequently:true});
+     tx.drawImage(g,0,0);
+     const im=tx.getImageData(0,0,t.width,t.height),p=im.data;
+     for(let i=0;i<p.length;i+=4){
+       const y=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+       const v=y>168?255: y<92?0:Math.round((y-92)*255/76);
+       p[i]=p[i+1]=p[i+2]=v;
+     }
+     tx.putImageData(im,0,0);
+     URL.revokeObjectURL(img.src);
+     resolve([base,g,t]);
+   };
+   img.onerror=reject;img.src=URL.createObjectURL(file);
+ });
+}
+function cleanOCRText(s){
+ return String(s||"").replace(/[|¦]/g,"I").replace(/[\u2010-\u2015]/g,"-")
+   .replace(/[^A-Za-zƏəÖöÜüĞğÇçŞşİıƏə0-9%./()'&+\-\n ]/g," ")
+   .replace(/[ \t]+/g," ").replace(/\n{2,}/g,"\n").trim();
+}
+function ocrLines(raw){
+ return cleanOCRText(raw).split(/\n+/).map(x=>x.trim()).filter(x=>x.length>=2);
+}
+function findBestOCRMatch(texts){
+ let bestRec=null,bestScore=0,bestLine="";
+ const candidates=[];
+ for(const raw of texts){
+   const ls=ocrLines(raw);
+   candidates.push(...ls);
+   // Adjacent lines are also tested because product names are often split across two lines.
+   for(let i=0;i<ls.length-1;i++)candidates.push(ls[i]+" "+ls[i+1]);
+ }
+ for(const line of candidates){
+   const q=line.trim();
+   if(!q)continue;
+   for(const r of DATA){
+     let s=score(r,q);
+     // OCR often adds extra words around the product name; reward a strong product-name token hit.
+     const pn=norm(r.product), nq=norm(q);
+     const nt=tokens(nq), pt=tokens(pn);
+     if(pt.length && pt.every(t=>nt.some(x=>x===t||x.startsWith(t)||lev(t,x)<=1)))s+=260;
+     if(s>bestScore){bestScore=s;bestRec=r;bestLine=q}
+   }
+ }
+ return {bestRec,bestScore,bestLine};
+}
+async function photoOCR(file){
+ const e=document.getElementById("results");
+ e.innerHTML='<div class="warn">⏳ Etiket oxunur…<br><small>Şəkil böyüdülür və bir neçə OCR rejimində yoxlanılır.</small></div>';
+ try{
+   await loadTesseract();
+   const canvases=await makeOCRCanvases(file);
+   const worker=await Tesseract.createWorker("eng");
+   const outputs=[];
+   const modes=[11,6,12];
+   for(let i=0;i<canvases.length;i++){
+     for(const mode of modes){
+       await worker.setParameters({tessedit_pageseg_mode:String(mode),user_defined_dpi:"300",preserve_interword_spaces:"1"});
+       const out=await worker.recognize(canvases[i]);
+       outputs.push(out.data.text||"");
+     }
+   }
+   await worker.terminate();
+   const raw=outputs.join("\n");
+   const match=findBestOCRMatch(outputs);
+   if(match.bestRec && match.bestScore>=430){
+     document.getElementById("q").value=match.bestRec.product;
+     saveHistory(match.bestRec.product);
+     render();
+     document.getElementById("results").insertAdjacentHTML("afterbegin",
+       '<div class="notice">📷 Etiketdən tanındı: <b>'+esc(match.bestRec.product)+'</b></div>');
+   }else{
+     document.getElementById("q").value="";
+     e.innerHTML='<div class="warn">🟠 Etiketdəki yazı oxundu, amma bazadakı məhsulla kifayət qədər güvənli uyğunluq alınmadı.<br><small>Oxunan mətn: '+esc(cleanOCRText(raw).slice(0,500)||"mətn tapılmadı")+'</small><br><br>💡 Məhsul adını etiketdə daha yaxın məsafədən, düz bucaq altında və işıq əks etdirmədən çəkin.</div>';
+   }
+ }catch(x){
+   e.innerHTML='<div class="warn">🟠 OCR yüklənmədi və ya şəkil oxunmadı.<br><small>'+esc(x?.message||"Naməlum xəta")+'</small></div>';
+ }
+}async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
 document.getElementById("search").onclick=()=>{saveHistory(document.getElementById("q").value.trim());render()};document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"){saveHistory(document.getElementById("q").value.trim());render()}});document.getElementById("photoBtn").onclick=()=>document.getElementById("photoInput").click();document.getElementById("photoInput").onchange=e=>{if(e.target.files[0])photoOCR(e.target.files[0])};document.getElementById("barcodeBtn").onclick=scanBarcode;document.getElementById("historyBtn").onclick=()=>togglePanel("historyPanel");document.getElementById("favoritesBtn").onclick=()=>togglePanel("favoritesPanel");document.getElementById("statsBtn").onclick=()=>togglePanel("statsPanel");renderHistory();
 fetch("./data.json?v=20260921").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(d=>{if(!Array.isArray(d))throw new Error("data.json massiv deyil");DATA=d;render();renderStats();renderFavorites()}).catch(x=>document.getElementById("results").innerHTML='<div class="warn">🟠 Baza yüklənmədi: '+esc(x.message)+'</div>');
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
