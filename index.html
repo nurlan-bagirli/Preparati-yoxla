@@ -215,6 +215,23 @@ function cleanOCRText(s){
 function ocrLines(raw){
  return cleanOCRText(raw).split(/\n+/).map(x=>x.trim()).filter(x=>x.length>=2);
 }
+function findBestOCRMatch(texts){
+ let bestRec=null,bestScore=0,bestLine="";
+ const candidates=[];
+ for(const raw of texts){
+   const ls=ocrLines(raw); candidates.push(...ls);
+   for(let i=0;i<ls.length-1;i++) candidates.push(ls[i]+" "+ls[i+1]);
+ }
+ for(const line of candidates){
+   for(const r of DATA){
+     let s=score(r,line);
+     const pt=tokens(norm(r.product)),nt=tokens(norm(line));
+     if(pt.length&&pt.every(t=>nt.some(x=>x===t||x.startsWith(t)||lev(t,x)<=1)))s+=300;
+     if(s>bestScore){bestScore=s;bestRec=r;bestLine=line}
+   }
+ }
+ return {bestRec,bestScore,bestLine};
+}
 async function photoOCR(file){
  const e=document.getElementById("results");
  e.innerHTML='<div class="warn">⏳ AI OCR hazırlanır…<br><small>Şəkil telefonda lokal oxunur. İlk istifadədə OCR mühərriki yüklənir.</small></div>';
