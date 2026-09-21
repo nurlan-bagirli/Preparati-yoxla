@@ -173,11 +173,11 @@ async function loadPaddleOCR(){
    const ocr=await mod.PaddleOCR.create({
      lang:"en",
      ocrVersion:"PP-OCRv5",
-     worker:true,
+     worker:false,
      ortOptions:{
        backend:"wasm",
        wasmPaths:"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/",
-       numThreads:2,
+       numThreads:1,
        simd:true
      }
    });
@@ -212,7 +212,7 @@ function findBestOCRMatch(texts){
 }
 async function photoOCR(file){
  const e=document.getElementById("results");
- e.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>Şəkil telefonda lokal analiz olunur. İlk istifadədə OCR modeli yüklənir.</small></div>';
+ e.innerHTML='<div class="warn">⏳ AI OCR işləyir…<br><small>Şəkil telefonda lokal analiz olunur. İlk istifadədə OCR modeli yüklənir. iPhone üçün uyğun rejim aktivdir.</small></div>';
  try{
    const ocr=await loadPaddleOCR();
    const [result]=await ocr.predict(file,{textDetLimitSideLen:1536,textRecScoreThresh:0.35});
