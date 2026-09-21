@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b6b4f">
 <title>Preparatı Yoxla</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Preparatı Yoxla">
 <style>
 :root{--green:#0b6b4f;--green2:#0e8a65;--bg:#f4f7f5;--card:#fff;--text:#17211d;--muted:#66736d;--line:#dce5e0;--orange:#c66b00;--red:#b42318}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text)}
@@ -33,6 +37,7 @@ select{border:1px solid var(--line);background:white;border-radius:10px;padding:
 .expbox input{width:100%;margin-top:7px;border:1px solid var(--line);border-radius:9px;padding:10px;font-size:15px}
 .footer{font-size:12px;color:var(--muted);padding:20px 0}
 @media(max-width:620px){.grid{grid-template-columns:1fr}.count{margin-left:0;width:100%}.searchbox{padding:7px}.searchbox input{font-size:16px}.searchbtn{padding:11px 12px}}
+ .scanbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.action{background:#fff;border:1px solid var(--line);color:var(--text);padding:10px 13px}.action.primary{background:var(--green);color:#fff;border-color:var(--green)}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0;display:none}.panel.open{display:block}.panel h3{margin:0 0 9px;font-size:16px}.history-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#f7f9f8;border-radius:12px;padding:12px;text-align:center}.stat b{display:block;font-size:20px}.stat span{font-size:11px;color:var(--muted)}.favorite{float:right;background:transparent;padding:3px 6px;font-size:22px}.photo-input{display:none}.exp-result{margin-top:8px;font-size:13px;font-weight:700}.exp-ok{color:#09623f}.exp-bad{color:var(--red)}.exp-warn{color:var(--orange)}.source a{color:var(--green);font-weight:700}.notice{font-size:12px;color:var(--muted);line-height:1.45;margin-top:8px}@media(max-width:620px){.statgrid{grid-template-columns:1fr 1fr}.action{flex:1;min-width:120px}}
 </style>
 </head>
 <body>
@@ -53,7 +58,7 @@ select{border:1px solid var(--line);background:white;border-radius:10px;padding:
     <span class="count" id="count"></span>
   </div>
   <p class="help">Axtarış yazılış fərqlərinə dözümlüdür: latın/kiril, <b>ı-i-İ-I</b> fərqləri və OCR-də tez-tez yaranan kiçik səhvlər nəzərə alınır. Məsələn <b>Sunstar</b>, <b>Санстар</b>, <b>Bioabamectin</b>, qeydiyyat nömrəsi və ya təsiredici maddə ilə axtara bilərsiniz.</p>
-  <div id="results"></div>
+<div class="scanbar"><button class="action primary" id="photoBtn">📷 Etiketi oxu</button><button class="action" id="barcodeBtn">▣ Barkod/QR</button><button class="action" id="historyBtn">🕘 Tarixçə</button><button class="action" id="favoritesBtn">⭐ Seçilmişlər</button><button class="action" id="statsBtn">📊 Statistika</button><input class="photo-input" id="photoInput" type="file" accept="image/*" capture="environment"></div><div class="panel" id="historyPanel"><h3>🕘 Son axtarışlar</h3><div id="historyList"></div></div><div class="panel" id="favoritesPanel"><h3>⭐ Seçilmişlər</h3><div id="favoritesList"></div></div><div class="panel" id="statsPanel"><h3>📊 Baza statistikası</h3><div id="statsGrid" class="statgrid"></div><div class="notice">Statistika 01.09.2026 tarixli yüklənmiş reyestr bazasına əsaslanır.</div></div><div id="results"></div>
   <div class="footer">Mənbə: AQTA-nın 01.09.2026 tarixli pestisid və aqrokimyəvi maddələr reyestrlərindən hazırlanmış texniki baza. Qablaşdırmadakı EXP ayrıca yoxlanmalıdır; reyestrdəki qeydiyyatın bitmə tarixi ilə eyni şey deyil.</div>
 </main>
 
@@ -110,7 +115,7 @@ function badge(rec){if(rec.status==="Aktiv")return '<span class="badge active">�
 function card(rec){
  const id="d"+rec.id;
  return `<article class="card">
-  <div class="title">${esc(rec.product)}</div>
+  <button class="favorite" title="Seçilmişlərə əlavə et" onclick="toggleFavorite('${esc(rec.regNo)}')">${isFav(rec)?"★":"☆"}</button><div class="title">${esc(rec.product)}</div>
   <div class="meta">${esc(rec.category)}${rec.subtype?" • "+esc(rec.subtype):""}${rec.manufacturer?" • "+esc(rec.manufacturer):""}</div>
   ${badge(rec)}
   <div class="grid">
@@ -120,7 +125,8 @@ function card(rec){
     <div class="field"><div class="label">İstehsalçı ölkəsi</div><div class="value">${esc(fmt(rec.manufacturerCountry))}</div></div>
   </div>
   <div class="expbox"><b>📦 Qablaşdırmanın EXP tarixi</b>
-    <input type="date" aria-label="Qablaşdırmanın EXP tarixi">
+    <input type="date" aria-label="Qablaşdırmanın EXP tarixi" onchange="checkExp(this)">
+    <div class="exp-result"></div>
     <div class="meta">Bu tarix məhsulun qablaşdırmasından oxunur və dövlət qeydiyyatı tarixindən ayrıca qiymətləndirilir.</div>
   </div>
   <button class="clear" style="margin-top:10px" onclick="document.getElementById('${id}').classList.toggle('open')">Ətraflı məlumat</button>
@@ -133,7 +139,7 @@ function card(rec){
       <div class="field"><div class="label">Tətbiq üsulu</div><div class="value">${esc(fmt(rec.method))}</div></div>
       <div class="field"><div class="label">Gözləmə müddəti / işləmə sayı</div><div class="value">${esc(fmt(rec.waiting))}</div></div>
     </div>
-    <div class="source">📄 AQTA reyestri • PDF səhifəsi: <b>${esc(fmt(rec.pdfPage))}</b> • Reyestr sətri: <b>${esc(fmt(rec.registryNo))}</b></div>
+    <div class="source">📄 AQTA reyestri • PDF səhifəsi: <b>${esc(fmt(rec.pdfPage))}</b> • Reyestr sətri: <b>${esc(fmt(rec.registryNo))}</b><br><a href="https://afsa.gov.az/az/pestisidler-bioloji-preparatlar-ve-aqrokimyəvi-maddələr/pestisidler" target="_blank" rel="noopener">Pestisid reyestri</a> · <a href="https://afsa.gov.az/az/pestisidler-bioloji-preparatlar-ve-aqrokimyəvi-maddələr" target="_blank" rel="noopener">AQTA reyestrləri</a></div>
   </div>
  </article>`
 }
@@ -149,14 +155,21 @@ function render(){
  if(!arr.length){el.innerHTML='<div class="warn">🟠 <b>Dəqiq uyğunluq tapılmadı.</b><br>Adı, təsiredici maddəni, istehsalçını və ya qeydiyyat nömrəsini başqa formada yoxlayın.</div>';return}
  el.innerHTML=arr.map(card).join("");
 }
-fetch("https://raw.githubusercontent.com/nurlan-bagirli/Preparati-yoxla/main/data.json?v=20260921")
-  .then(r=>{if(!r.ok) throw new Error("HTTP "+r.status); return r.json()})
-  .then(d=>{if(!Array.isArray(d)) throw new Error("data.json massiv deyil"); DATA=d; render()})
-  .catch(err=>document.getElementById("results").innerHTML='<div class="warn">🟠 Baza yüklənmədi: '+esc(err.message)+'<br><small>data.json GitHub-dan birbaşa yoxlanılır.</small></div>');
-document.getElementById("search").onclick=render;
-document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};
-document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;
-document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")render()});
+let HISTORY=JSON.parse(localStorage.getItem("py_history")||"[]"),FAVS=JSON.parse(localStorage.getItem("py_favs")||"[]");
+function saveHistory(q){if(!q)return;HISTORY=[q,...HISTORY.filter(x=>x!==q)].slice(0,15);localStorage.setItem("py_history",JSON.stringify(HISTORY));renderHistory()}
+function renderHistory(){const e=document.getElementById("historyList");e.innerHTML=HISTORY.length?HISTORY.map((x,i)=>'<div class="history-item"><span>🔎 '+esc(x)+'</span><button class="clear" onclick="useHistory('+i+')">Aç</button></div>').join(""):'<div class="empty" style="padding:15px">Hələ axtarış yoxdur.</div>'}
+function useHistory(i){document.getElementById("q").value=HISTORY[i]||"";render()}
+function isFav(r){return FAVS.includes(r.regNo)}
+function toggleFavorite(n){FAVS.includes(n)?FAVS=FAVS.filter(x=>x!==n):FAVS.push(n);localStorage.setItem("py_favs",JSON.stringify(FAVS));renderFavorites();render()}
+function renderFavorites(){const e=document.getElementById("favoritesList"),rows=FAVS.map(n=>DATA.find(r=>r.regNo===n)).filter(Boolean);e.innerHTML=rows.length?rows.map(r=>'<div class="history-item"><span><b>'+esc(r.product)+'</b><br><small>'+esc(r.regNo)+' · '+esc(r.manufacturer||"")+'</small></span><button class="clear" onclick="document.getElementById(\'q\').value='+JSON.stringify(r.product)+';render()">Yoxla</button></div>').join(""):'<div class="empty" style="padding:15px">Hələ seçilmiş məhsul yoxdur.</div>'}
+function renderStats(){const p=DATA.filter(r=>r.category==="pestisid").length,a=DATA.filter(r=>r.category==="aqrokimyəvi").length,ac=DATA.filter(r=>r.status==="Aktiv").length,ex=DATA.filter(r=>r.status==="Müddəti bitib").length;document.getElementById("statsGrid").innerHTML='<div class="stat"><b>'+DATA.length+'</b><span>Ümumi</span></div><div class="stat"><b>'+p+'</b><span>Pestisid</span></div><div class="stat"><b>'+a+'</b><span>Aqrokimyəvi</span></div><div class="stat"><b>'+ac+'</b><span>Aktiv</span></div><div class="stat"><b>'+ex+'</b><span>Müddəti bitib</span></div>'}
+function checkExp(i){const e=i.parentElement.querySelector(".exp-result"),v=i.value;if(!v){e.innerHTML="";return}const d=Math.ceil((new Date(v+"T23:59:59")-new Date())/86400000);e.className="exp-result "+(d<0?"exp-bad":d<=30?"exp-warn":"exp-ok");e.textContent=d<0?"🔴 Qablaşdırmanın EXP müddəti bitib — "+Math.abs(d)+" gün əvvəl":d<=30?"🟠 EXP müddətinin bitməsinə "+d+" gün qalıb":"🟢 Qablaşdırmanın EXP müddəti keçməyib — "+d+" gün qalıb"}
+function togglePanel(id){["historyPanel","favoritesPanel","statsPanel"].forEach(x=>{if(x!==id)document.getElementById(x).classList.remove("open")});document.getElementById(id).classList.toggle("open");if(id==="historyPanel")renderHistory();if(id==="favoritesPanel")renderFavorites();if(id==="statsPanel")renderStats()}
+async function photoOCR(file){const e=document.getElementById("results");e.innerHTML='<div class="warn">⏳ Etiket oxunur…</div>';try{if(!window.Tesseract)await new Promise((ok,no)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";s.onload=ok;s.onerror=no;document.head.appendChild(s)});const o=await Tesseract.recognize(file,"eng");const t=o.data.text.replace(/\n+/g," ").trim();if(!t){e.innerHTML='<div class="warn">🟠 Şəkildən mətn oxunmadı. Daha aydın foto çəkin.</div>';return}document.getElementById("q").value=t.slice(0,180);saveHistory(t.slice(0,180));render()}catch(x){e.innerHTML='<div class="warn">🟠 OCR yüklənmədi və ya şəkil oxunmadı.</div>'}}
+async function scanBarcode(){if(!("BarcodeDetector"in window)){alert("Bu Safari versiyası barkod skanını dəstəkləmir. 📷 Etiketi oxu istifadə edin.");return}try{const d=new BarcodeDetector({formats:["qr_code","ean_13","ean_8","code_128","upc_a","upc_e"]}),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}),v=document.createElement("video");v.srcObject=s;v.setAttribute("playsinline","");await v.play();const m=document.createElement("div");m.style="position:fixed;inset:0;background:#000d;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px";m.innerHTML='<div style="color:white;font-size:18px;font-weight:700">Kameranı barkoda yönəldin</div>';m.appendChild(v);v.style.maxWidth="90%";v.style.maxHeight="65%";const b=document.createElement("button");b.textContent="Bağla";b.className="action";m.appendChild(b);document.body.appendChild(m);b.onclick=()=>{s.getTracks().forEach(t=>t.stop());m.remove()};const loop=async()=>{if(!document.body.contains(m))return;try{const q=await d.detect(v);if(q.length){document.getElementById("q").value=q[0].rawValue;b.click();render()}}catch{}requestAnimationFrame(loop)};loop()}catch(x){alert("Kameraya giriş mümkün olmadı. Safari kamera icazəsini yoxlayın.")}}
+document.getElementById("search").onclick=()=>{saveHistory(document.getElementById("q").value.trim());render()};document.getElementById("clear").onclick=()=>{document.getElementById("q").value="";render()};document.getElementById("cat").onchange=render;document.getElementById("status").onchange=render;document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"){saveHistory(document.getElementById("q").value.trim());render()}});document.getElementById("photoBtn").onclick=()=>document.getElementById("photoInput").click();document.getElementById("photoInput").onchange=e=>{if(e.target.files[0])photoOCR(e.target.files[0])};document.getElementById("barcodeBtn").onclick=scanBarcode;document.getElementById("historyBtn").onclick=()=>togglePanel("historyPanel");document.getElementById("favoritesBtn").onclick=()=>togglePanel("favoritesPanel");document.getElementById("statsBtn").onclick=()=>togglePanel("statsPanel");renderHistory();
+fetch("./data.json?v=20260921").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(d=>{if(!Array.isArray(d))throw new Error("data.json massiv deyil");DATA=d;render();renderStats();renderFavorites()}).catch(x=>document.getElementById("results").innerHTML='<div class="warn">🟠 Baza yüklənmədi: '+esc(x.message)+'</div>');
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 </script>
 </body>
 </html>
