@@ -162,7 +162,7 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 
 function render(){
  const q=document.getElementById("q").value.trim(), cat=document.getElementById("cat").value, st=document.getElementById("status").value;
- let arr=DATA.filter(r=>(!cat||r.category===cat)&&(!st||st==="30gun"?(r.status==="Aktiv"&&r.regExpiry&&Math.ceil((new Date(r.regExpiry+"T23:59:59")-new Date())/86400000)<=30&&Math.ceil((new Date(r.regExpiry+"T23:59:59")-new Date())/86400000)>=0):r.status===st));
+ let arr=DATA.filter(r=>(!cat||r.category===cat)&&(!st||(st==="30gun"?(r.status==="Aktiv"&&r.regExpiry&&Math.ceil((new Date(r.regExpiry+"T23:59:59")-new Date())/86400000)<=30&&Math.ceil((new Date(r.regExpiry+"T23:59:59")-new Date())/86400000)>=0):r.status===st)));
  if(q){arr=arr.map(r=>({r,s:score(r,q)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.r);const top=arr[0];if(top){const nq=norm(q);if(norm(top.product)===nq)LAST_FOUND_BY="Məhsul adına görə";else if(String(top.regNo||"").replace(/\\s/g,"")===q.replace(/\\s/g,""))LAST_FOUND_BY="Qeydiyyat nömrəsinə görə";else if(norm(top.active||"").includes(nq))LAST_FOUND_BY="Təsiredici maddəyə görə";else if(norm(top.manufacturer||"").includes(nq))LAST_FOUND_BY="İstehsalçıya görə";else LAST_FOUND_BY="Yaxın uyğunluq";}}else arr=arr.slice(0,30);
  document.getElementById("count").textContent=q?`${arr.length} uyğun nəticə`:`İlk ${arr.length} qeyd göstərilir`;
  const el=document.getElementById("results");
